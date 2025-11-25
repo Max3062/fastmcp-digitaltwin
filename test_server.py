@@ -18,31 +18,37 @@ if env_file.exists():
                 os.environ[key] = value
 
 # Import after setting environment
-import echo
-from echo import _chat_with_me_impl, load_cv, find_cv_in_docs
+import main
+from main import _chat_with_me_impl, load_all_pdfs_from_docs, find_all_pdfs_in_docs
 
 def test_cv_loading():
     """Test CV loading functionality."""
     print("=" * 60)
-    print("Testing CV Loading")
+    print("Testing PDF Loading")
     print("=" * 60)
     
-    cv_path = find_cv_in_docs()
-    if cv_path:
-        print(f"✓ Found CV at: {cv_path}")
+    pdf_files = find_all_pdfs_in_docs()
+    if pdf_files:
+        print(f"✓ Found {len(pdf_files)} PDF file(s) in docs/ directory:")
+        for pdf_file in pdf_files:
+            print(f"  - {pdf_file}")
         try:
-            load_cv(cv_path)
-            cv_content = echo.cv_content
-            print(f"✓ CV loaded successfully!")
-            print(f"  - File: {cv_path}")
-            print(f"  - Content length: {len(cv_content)} characters")
+            load_all_pdfs_from_docs()
+            # Access the module's global variables
+            import main
+            cv_content = main.cv_content
+            cv_metadata = main.cv_metadata
+            print(f"✓ PDFs loaded successfully!")
+            if cv_metadata.get("file_names"):
+                print(f"  - Loaded files: {', '.join(cv_metadata['file_names'])}")
+            print(f"  - Total content length: {len(cv_content)} characters")
             print(f"  - Preview (first 200 chars): {cv_content[:200]}...")
             return True
         except Exception as e:
-            print(f"✗ Error loading CV: {e}")
+            print(f"✗ Error loading PDFs: {e}")
             return False
     else:
-        print("✗ No CV found in docs/ directory")
+        print("✗ No PDF files found in docs/ directory")
         return False
 
 

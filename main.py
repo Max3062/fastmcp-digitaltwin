@@ -110,29 +110,18 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     )
 
 
-def find_cv_in_docs() -> Optional[str]:
-    """Try to find CV PDF in docs directory."""
+def find_all_pdfs_in_docs() -> list[str]:
+    """Find all PDF files in docs directory."""
     # Get the directory where this script is located
     script_dir = Path(__file__).parent
     docs_dir = script_dir / "docs"
     
     if not docs_dir.exists():
-        return None
+        return []
     
-    # Look for common CV file names
-    cv_names = ["CV.pdf", "cv.pdf", "resume.pdf", "Resume.pdf", "CV.pdf"]
-    
-    for cv_name in cv_names:
-        cv_path = docs_dir / cv_name
-        if cv_path.exists():
-            return str(cv_path)
-    
-    # If no standard name found, look for any PDF in docs
-    pdf_files = list(docs_dir.glob("*.pdf"))
-    if pdf_files:
-        return str(pdf_files[0])
-    
-    return None
+    # Find all PDF files in docs directory
+    pdf_files = sorted(docs_dir.glob("*.pdf"))
+    return [str(pdf_path) for pdf_path in pdf_files]
 
 
 def load_cv(pdf_path: str) -> None:
@@ -153,6 +142,46 @@ def load_cv(pdf_path: str) -> None:
     }
 
 
+def load_all_pdfs_from_docs() -> None:
+    """Load and combine all PDFs from docs directory."""
+    global cv_content, cv_metadata
+    
+    pdf_files = find_all_pdfs_in_docs()
+    
+    if not pdf_files:
+        raise FileNotFoundError("No PDF files found in docs/ directory")
+    
+    print(f"Found {len(pdf_files)} PDF file(s) in docs directory")
+    
+    all_content_parts = []
+    loaded_files = []
+    
+    for pdf_path in pdf_files:
+        try:
+            print(f"Loading: {os.path.basename(pdf_path)}")
+            content = extract_text_from_pdf(pdf_path)
+            all_content_parts.append(f"\n\n--- Content from {os.path.basename(pdf_path)} ---\n\n{content}")
+            loaded_files.append(pdf_path)
+        except Exception as e:
+            print(f"Warning: Failed to load {pdf_path}: {e}")
+            continue
+    
+    if not all_content_parts:
+        raise Exception("Failed to load any PDF files from docs directory")
+    
+    cv_content = "\n".join(all_content_parts)
+    
+    cv_metadata = {
+        "file_paths": loaded_files,
+        "file_names": [os.path.basename(f) for f in loaded_files],
+        "content_length": len(cv_content),
+        "num_files": len(loaded_files),
+        "loaded": True
+    }
+    
+    print(f"Successfully loaded {len(loaded_files)} PDF file(s), total content length: {len(cv_content)} characters")
+
+
 def _chat_with_me_impl(message: str, cv_path: Optional[str] = None) -> str:
     """
     Chat with the digital twin based on your CV.
@@ -163,7 +192,7 @@ def _chat_with_me_impl(message: str, cv_path: Optional[str] = None) -> str:
         message: Your message or question (e.g., "What is your work experience?", 
                  "Tell me about yourself", "What are your skills?")
         cv_path: Optional path to CV PDF file. If not provided, will automatically 
-                 look for CV.pdf in the docs/ directory.
+                 scan and load all PDF files in the docs/ directory.
         
     Returns:
         Response from the digital twin based on CV content
@@ -180,21 +209,19 @@ def _chat_with_me_impl(message: str, cv_path: Optional[str] = None) -> str:
                 "message": f"Failed to load CV: {str(e)}"
             }, indent=2)
     
-    # If CV not loaded, try to find it in docs directory
+    # If CV not loaded, try to find and load all PDFs in docs directory
     if cv_content is None:
-        auto_cv_path = find_cv_in_docs()
-        if auto_cv_path:
-            try:
-                load_cv(auto_cv_path)
-            except Exception as e:
-                return json.dumps({
-                    "status": "error",
-                    "message": f"Found CV at {auto_cv_path} but failed to load: {str(e)}"
-                }, indent=2)
-        else:
+        try:
+            load_all_pdfs_from_docs()
+        except FileNotFoundError as e:
             return json.dumps({
                 "status": "error",
-                "message": "No CV loaded. Please provide a cv_path parameter or place your CV PDF in the docs/ directory."
+                "message": str(e)
+            }, indent=2)
+        except Exception as e:
+            return json.dumps({
+                "status": "error",
+                "message": f"Failed to load PDFs from docs directory: {str(e)}"
             }, indent=2)
     
     try:
@@ -267,23 +294,21 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error loading CV: {e}")
     else:
-        # Try to auto-load CV from docs directory
-        auto_cv_path = find_cv_in_docs()
-        if auto_cv_path:
-            try:
-                load_cv(auto_cv_path)
-                print("CV loaded successfully from docs directory!")
-                print(f"CV file: {auto_cv_path}")
-                print(f"Content length: {len(cv_content)} characters")
-            except Exception as e:
-                print(f"Error loading CV: {e}")
-        else:
-            print("CV Digital Twin MCP Server")
-            print("Usage: python echo.py <path_to_cv.pdf>")
-            print("\nOr place your CV.pdf in the docs/ directory and use as MCP server:")
+        # Try to auto-load all PDFs from docs directory
+        try:
+            load_all_pdfs_from_docs()
+            print("PDFs loaded successfully from docs directory!")
+            if cv_metadata.get("file_names"):
+                print(f"Loaded files: {', '.join(cv_metadata['file_names'])}")
+            print(f"Total content length: {len(cv_content)} characters")
+        except Exception as e:
+            print(f"Error loading PDFs: {e}")
+            print("\nCV Digital Twin MCP Server")
+            print("Usage: python main.py <path_to_cv.pdf>")
+            print("\nOr place PDF file(s) in the docs/ directory and use as MCP server:")
             print("  - chat_with_me(message): Chat with your digital twin")
-            print("  - CV will be automatically loaded from docs/CV.pdf")
+            print("  - All PDFs in docs/ will be automatically scanned and loaded")
             print("\nTo run as MCP server:")
-            print("  python -m fastmcp run echo.py")
+            print("  python -m fastmcp run main.py")
             print("  or")
-            print("  fastmcp run echo.py")
+            print("  fastmcp run main.py")
